@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Generador de referencia APA 7 para artículos científicos",
+  "version": "1.0",
+  "description": "Extrae metadatos de artículos científicos y copia la referencia bibliográfica en formato APA 7 al portapapeles.",
+  "icons": {
+    "128": "icon.png"
+  },
+  "action": {
+    "default_title": "Generar referencia en APA 7"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

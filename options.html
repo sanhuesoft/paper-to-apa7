@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Opciones de Cita APA 7</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5; }
+    h2 { color: #20558a; }
+    .option { margin-bottom: 15px; display: flex; align-items: center; }
+    input { margin-right: 10px; cursor: pointer; }
+    label { cursor: pointer; font-size: 14px; }
+    #status { margin-top: 10px; color: green; font-weight: bold; height: 20px; }
+    button { 
+      background-color: #20558a; color: white; border: none; 
+      padding: 10px 20px; border-radius: 4px; cursor: pointer; 
+    }
+    button:hover { background-color: #163e66; }
+  </style>
+</head>
+<body>
+  <h2>Preferencias de Copiado</h2>
+  <p>Elige en qué formato quieres que se copie la cita al portapapeles:</p>
+  
+  <div class="option">
+    <input type="radio" id="richText" name="format" value="richText">
+    <label for="richText">Texto Enriquecido (con cursivas para Word/Docs)</label>
+  </div>
+  
+  <div class="option">
+    <input type="radio" id="plainText" name="format" value="plainText">
+    <label for="plainText">Texto Plano (sin formato)</label>
+  </div>
+  
+  <div class="option">
+    <input type="radio" id="markdown" name="format" value="markdown">
+    <label for="markdown">Markdown (usando _cursivas_ para editores MD)</label>
+  </div>
+
+  <button id="save">Guardar Configuración</button>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
