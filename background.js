@@ -2,10 +2,8 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://')) return;
 
     try {
-        // Obtenemos la preferencia del usuario
         const settings = await chrome.storage.sync.get({ copyFormat: 'richText' });
 
-        // Ejecutamos el script en la página
         await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: generateAndCopyAPA,
@@ -16,8 +14,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
 });
 
-// Función principal que corre en la página web
 async function generateAndCopyAPA(userFormat) {
+    const warningMsg = "\n\n⚠️ Verifique que los datos estén completos.";
+
     const getMeta = (names) => {
         for (let name of names) {
             const el = document.querySelector(`meta[name="${name}"], meta[property="${name}"]`);
@@ -26,107 +25,104 @@ async function generateAndCopyAPA(userFormat) {
         return "";
     };
 
-    // 1. Extracción de Autores
+    // --- PASO 1: INTENTAR CON METADATOS HTML ---
     let rawAuthors = [];
     const authorNodes = document.querySelectorAll('meta[name="citation_author"]');
     if (authorNodes.length > 0) {
         rawAuthors = Array.from(authorNodes).map(n => n.content.trim());
     } else {
         const authorsEntry = getMeta(['citation_authors']);
-        if (authorsEntry) {
-            rawAuthors = authorsEntry.split(';').map(a => a.trim()).filter(a => a.length > 0);
-        }
+        if (authorsEntry) rawAuthors = authorsEntry.split(';').map(a => a.trim());
     }
 
-    // 2. Extracción de Metadatos base
     let rawDate = getMeta(['citation_publication_date', 'citation_date', 'dc.date']);
-    let year = "";
-    if (rawDate) {
-        const yearMatch = rawDate.match(/\d{4}/);
-        if (yearMatch) year = yearMatch[0];
-    }
-
+    let year = rawDate ? (rawDate.match(/\d{4}/) || [""])[0] : "";
     let title = getMeta(['citation_title', 'dc.title', 'og:title']) || document.title;
     let journal = getMeta(['citation_journal_title', 'citation_publisher']);
     let doi = getMeta(['citation_doi']);
     let volume = getMeta(['citation_volume']);
     let issue = getMeta(['citation_issue']);
-    let url = window.location.href;
 
-    // Filtro de discriminación
-    if (rawAuthors.length === 0 && !doi && !journal) {
-        alert("🔍 Formato no implementado aún.\n\nEste sitio no parece ser un artículo científico.");
+    // Si tenemos autores y título, procedemos con la lógica local
+    if (rawAuthors.length > 0 && title && title !== document.title) {
+        processLocalCitation(rawAuthors, year, title, journal, volume, issue, doi, userFormat);
         return;
     }
 
-    // 3. Formateo de Autores APA 7
-    let authorStr = "Autor desconocido.";
-    if (rawAuthors.length > 0) {
-        const formattedAuthors = rawAuthors.map(a => {
-            let last, first;
-            if (a.includes(',')) {
-                let parts = a.split(',');
-                last = parts[0].trim();
-                first = parts[1] ? parts[1].trim() : "";
-            } else if (a.includes(' ')) {
-                let parts = a.split(' ');
-                last = parts[0].trim();
-                first = parts.slice(1).join(' ').trim();
+    // --- PASO 2: SI FALLA, BUSCAR DOI EN EL TEXTO Y USAR CROSSREF ---
+    // Buscamos un DOI en todo el cuerpo de la página usando Regex
+    const doiRegex = /\b10\.\d{4,9}\/[-._;()/:A-Z0-9]+\b/i;
+    const bodyText = document.body.innerText;
+    const foundDoi = doi || (bodyText.match(doiRegex) || [null])[0];
+
+    if (foundDoi) {
+        try {
+            const response = await fetch(`https://api.crossref.org/works/${foundDoi}`);
+            if (!response.ok) throw new Error();
+            const data = await response.json();
+            const item = data.message;
+
+            // Extraer datos de CrossRef
+            const crAuthors = (item.author || []).map(a => `${a.family}, ${a.given ? a.given.charAt(0) + '.' : ''}`);
+            const crYear = item.published?.['date-parts']?.[0]?.[0] || item.created?.['date-parts']?.[0]?.[0] || "s.f.";
+            const crTitle = item.title?.[0] || "Sin título";
+            const crJournal = item['container-title']?.[0] || "";
+            const crVolume = item.volume || "";
+            const crIssue = item.issue || "";
+
+            processLocalCitation(crAuthors, crYear, crTitle, crJournal, crVolume, crIssue, foundDoi, userFormat, true);
+            return;
+        } catch (e) {
+            console.error("Error consultando CrossRef:", e);
+        }
+    }
+
+    // --- PASO 3: SI NADA FUNCIONA ---
+    alert("🔍 No se detectaron metadatos ni un DOI válido en esta página.");
+
+    // Función interna para procesar y copiar
+    async function processLocalCitation(authors, y, t, j, v, i, d, format, fromApi = false) {
+        let authorStr = authors.length > 0 ? "" : "Autor desconocido.";
+        if (authors.length > 0) {
+            if (authors.length === 1) authorStr = authors[0];
+            else if (authors.length <= 20) {
+                const last = authors.pop();
+                authorStr = `${authors.join(', ')} & ${last}`;
             } else {
-                last = a;
-                first = "";
+                authorStr = `${authors.slice(0, 19).join(', ')} ... ${authors[authors.length - 1]}`;
             }
-            let initials = first ? first.split(/[\s\.]+/).filter(n => n).map(n => n.charAt(0).toUpperCase() + '.').join(' ') : "";
-            return initials ? `${last}, ${initials}` : last;
-        });
-
-        if (formattedAuthors.length === 1) {
-            authorStr = formattedAuthors[0];
-        } else if (formattedAuthors.length <= 20) {
-            const lastAuthor = formattedAuthors.pop();
-            authorStr = `${formattedAuthors.join(', ')} & ${lastAuthor}`;
-        } else {
-            authorStr = `${formattedAuthors.slice(0, 19).join(', ')} ... ${formattedAuthors[formattedAuthors.length - 1]}`;
         }
-    }
 
-    // 4. Preparación de la Cita
-    const finalYear = year || "s.f.";
-    const titleClean = title.replace(/\s+/g, ' ').trim();
-    const link = doi ? ` https://doi.org/${doi}` : ` ${url}`;
-    
-    let finalOutputHtml = "";
-    let finalOutputPlain = "";
+        const titleClean = t.replace(/\s+/g, ' ').trim();
+        const link = d ? ` https://doi.org/${d}` : ` ${window.location.href}`;
+        const isMissing = !y || !j || !v || !i;
 
-    if (userFormat === 'markdown') {
-        let journalMd = journal ? ` _${journal}_` : "";
-        let volumeMd = volume ? `, _${volume}_` : "";
-        let issueStr = issue ? `(${issue})` : "";
-        finalOutputPlain = `${authorStr} (${finalYear}). ${titleClean}.${journalMd}${volumeMd}${issueStr}.${link}`;
-    } else {
-        let journalHtml = journal ? ` <i>${journal}</i>` : "";
-        let volumeHtml = volume ? `, <i>${volume}</i>` : "";
-        let issueStr = issue ? `(${issue})` : "";
-        finalOutputHtml = `${authorStr} (${finalYear}). ${titleClean}.${journalHtml}${volumeHtml}${issueStr}.${link}`;
-        finalOutputPlain = finalOutputHtml.replace(/<[^>]*>/g, '');
-    }
+        let outHtml = "";
+        let outPlain = "";
 
-    // 5. Copiar al Portapapeles usando la API moderna (asíncrona)
-    try {
-        if (userFormat === 'richText') {
-            const htmlBlob = new Blob([finalOutputHtml], { type: 'text/html' });
-            const plainBlob = new Blob([finalOutputPlain], { type: 'text/plain' });
-            const data = [new ClipboardItem({
-                'text/html': htmlBlob,
-                'text/plain': plainBlob
-            })];
-            await navigator.clipboard.write(data);
+        if (format === 'markdown') {
+            outPlain = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` _${j}_` : ""}${v ? `, _${v}_` : ""}${i ? `(${i})` : ""}.${link}`;
         } else {
-            await navigator.clipboard.writeText(finalOutputPlain);
+            outHtml = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` <i>${j}</i>` : ""}${v ? `, <i>${v}</i>` : ""}${i ? `(${i})` : ""}.${link}`;
+            outPlain = outHtml.replace(/<[^>]*>/g, '');
         }
-        alert(`¡Cita copiada en formato ${userFormat}!\n\n` + finalOutputPlain);
-    } catch (err) {
-        console.error("Error al copiar:", err);
-        alert("Error al copiar al portapapeles. Asegúrate de que la página tenga el foco.");
+
+        const finalPlain = outPlain + (isMissing ? warningMsg : "");
+        const finalHtml = outHtml + (isMissing ? "<br><br>⚠️ Verifique que los datos estén completos." : "");
+
+        try {
+            const source = fromApi ? "vía CrossRef" : "vía Metadatos";
+            if (format === 'richText') {
+                await navigator.clipboard.write([new ClipboardItem({
+                    'text/html': new Blob([finalHtml], { type: 'text/html' }),
+                    'text/plain': new Blob([finalPlain], { type: 'text/plain' })
+                })]);
+            } else {
+                await navigator.clipboard.writeText(finalPlain);
+            }
+            alert(`¡Cita generada (${source})!\n\n${finalPlain}`);
+        } catch (err) {
+            alert("Error al copiar al portapapeles.");
+        }
     }
 }

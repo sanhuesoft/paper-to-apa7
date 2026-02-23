@@ -4,12 +4,12 @@ Tu asistente personal para que la bibliografía de tus investigaciones o clases 
 
 ## ✨ Características
 
-* **Privacidad Total:** No envía datos a servidores externos ni requiere inicio de sesión. Todo el "scraping" y formateo ocurre localmente.
+* **Procesamiento Inteligente:** Prioriza la extracción local de metadatos para garantizar rapidez. En casos excepcionales donde el código HTML no contiene información bibliográfica, la extensión busca automáticamente un DOI en la página y consulta la API de **CrossRef** para generar una cita precisa y oficial.
 * **Formatos a Medida:** Configura desde la página de opciones si prefieres:
     * **Rich Text:** Para pegar en Word o Google Docs conservando las cursivas.
     * **Texto Plano:** Sin formato extra.
-    * **Markdown:** Usando `_cursivas_` para editores como Obsidians o Notion.
-* **Discriminación Inteligente:** Si entras a un sitio que no es un paper (como un blog o red social), la extensión te avisará que el formato no está implementado para evitar citas erróneas.
+    * **Markdown:** Usando `_cursivas_` para editores como Obsidian o Notion.
+* **Discriminación Inteligente:** Si entras a un sitio que no es un paper (como un blog o red social) y no se detecta un DOI válido, la extensión te avisará que el formato no está implementado para evitar citas erróneas.
 
 ## 📚 Sitios Compatibles (Confirmados)
 
@@ -18,6 +18,7 @@ La extensión está optimizada para leer etiquetas de metadatos académicos (*Hi
 * ✅ **PubMed**
 * ✅ **Springer Nature**
 * ✅ Sitios que utilicen estándares abiertos de metadatos científicos.
+* ✅ Sitios donde aparezca el DOI en alguna parte de la página.
 
 ## 🚀 Instalación
 
