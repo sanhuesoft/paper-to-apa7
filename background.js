@@ -43,14 +43,12 @@ async function generateAndCopyAPA(userFormat) {
     let volume = getMeta(['citation_volume']);
     let issue = getMeta(['citation_issue']);
 
-    // Si tenemos autores y título, procedemos con la lógica local
     if (rawAuthors.length > 0 && title && title !== document.title) {
         processLocalCitation(rawAuthors, year, title, journal, volume, issue, doi, userFormat);
         return;
     }
 
     // --- PASO 2: SI FALLA, BUSCAR DOI EN EL TEXTO Y USAR CROSSREF ---
-    // Buscamos un DOI en todo el cuerpo de la página usando Regex
     const doiRegex = /\b10\.\d{4,9}\/[-._;()/:A-Z0-9]+\b/i;
     const bodyText = document.body.innerText;
     const foundDoi = doi || (bodyText.match(doiRegex) || [null])[0];
@@ -62,7 +60,6 @@ async function generateAndCopyAPA(userFormat) {
             const data = await response.json();
             const item = data.message;
 
-            // Extraer datos de CrossRef
             const crAuthors = (item.author || []).map(a => `${a.family}, ${a.given ? a.given.charAt(0) + '.' : ''}`);
             const crYear = item.published?.['date-parts']?.[0]?.[0] || item.created?.['date-parts']?.[0]?.[0] || "s.f.";
             const crTitle = item.title?.[0] || "Sin título";
@@ -77,10 +74,8 @@ async function generateAndCopyAPA(userFormat) {
         }
     }
 
-    // --- PASO 3: SI NADA FUNCIONA ---
     alert("🔍 No se detectaron metadatos ni un DOI válido en esta página.");
 
-    // Función interna para procesar y copiar
     async function processLocalCitation(authors, y, t, j, v, i, d, format, fromApi = false) {
         let authorStr = authors.length > 0 ? "" : "Autor desconocido.";
         if (authors.length > 0) {
@@ -97,30 +92,40 @@ async function generateAndCopyAPA(userFormat) {
         const link = d ? ` https://doi.org/${d}` : ` ${window.location.href}`;
         const isMissing = !y || !j || !v || !i;
 
+        // Versiones base para diferentes usos
+        const basePlain = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` ${j}` : ""}${v ? `, ${v}` : ""}${i ? `(${i})` : ""}.${link}`;
+        const baseHtml = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` <i>${j}</i>` : ""}${v ? `, <i>${v}</i>` : ""}${i ? `(${i})` : ""}.${link}`;
+        const baseMarkdown = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` _${j}_` : ""}${v ? `, _${v}_` : ""}${i ? `(${i})` : ""}.${link}`;
+
         let outHtml = "";
         let outPlain = "";
 
+        // Definir qué va al portapapeles
         if (format === 'markdown') {
-            outPlain = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` _${j}_` : ""}${v ? `, _${v}_` : ""}${i ? `(${i})` : ""}.${link}`;
+            outPlain = baseMarkdown;
+        } else if (format === 'richText') {
+            outHtml = baseHtml;
+            outPlain = basePlain;
         } else {
-            outHtml = `${authorStr} (${y || 's.f.'}). ${titleClean}.${j ? ` <i>${j}</i>` : ""}${v ? `, <i>${v}</i>` : ""}${i ? `(${i})` : ""}.${link}`;
-            outPlain = outHtml.replace(/<[^>]*>/g, '');
+            outPlain = basePlain;
         }
 
-        const finalPlain = outPlain + (isMissing ? warningMsg : "");
-        const finalHtml = outHtml + (isMissing ? "<br><br>⚠️ Verifique que los datos estén completos." : "");
+        // El mensaje del Alert siempre lleva la advertencia si faltan datos
+        const alertMsg = basePlain + (isMissing ? warningMsg : "");
 
         try {
             const source = fromApi ? "vía CrossRef" : "vía Metadatos";
+            
             if (format === 'richText') {
                 await navigator.clipboard.write([new ClipboardItem({
-                    'text/html': new Blob([finalHtml], { type: 'text/html' }),
-                    'text/plain': new Blob([finalPlain], { type: 'text/plain' })
+                    'text/html': new Blob([outHtml], { type: 'text/html' }),
+                    'text/plain': new Blob([outPlain], { type: 'text/plain' })
                 })]);
             } else {
-                await navigator.clipboard.writeText(finalPlain);
+                await navigator.clipboard.writeText(outPlain);
             }
-            alert(`¡Cita generada (${source})!\n\n${finalPlain}`);
+            
+            alert(`¡Cita generada (${source})!\n\n${alertMsg}`);
         } catch (err) {
             alert("Error al copiar al portapapeles.");
         }
